@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Mappa itinerario</title>
+<meta name="robots" content="noindex, nofollow, noarchive">
+<style>
+  html,body{margin:0;padding:0;height:100%;background:#16283A;}
+  body{
+    display:flex;align-items:center;justify-content:center;
+    min-height:100vh;min-height:100dvh;
+  }
+  img{
+    max-width:100%;max-height:100vh;max-height:100dvh;
+    display:block;object-fit:contain;
+  }
+  #closeBtn{
+    position:fixed;top:14px;right:14px;
+    width:40px;height:40px;border-radius:50%;
+    background:rgba(255,255,255,0.14);border:none;
+    color:#F2EFE6;font-size:20px;line-height:1;
+    display:flex;align-items:center;justify-content:center;
+  }
+</style>
+</head>
+<body>
+<img src="mappa.avif" alt="Mappa dell'itinerario">
+<button id="closeBtn" aria-label="Chiudi">&times;</button>
+<script>
+  document.getElementById('closeBtn').addEventListener('click', function(){
+    window.close();
+    // se il browser non permette la chiusura (es. tab non aperta da script),
+    // come ripiego torniamo alla pagina precedente.
+    setTimeout(function(){
+      if(!window.closed && history.length > 1) history.back();
+    }, 150);
+  });
+</script>
+</body>
+</html>
