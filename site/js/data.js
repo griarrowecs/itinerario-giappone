@@ -241,17 +241,68 @@
       {label:"Consolato Generale d'Italia a Osaka", value:"+81 6-4706-5820", note:"Nakanoshima, Kita-ku, Osaka (competente per Kyoto/Nara/Osaka). Emergenze: +81 90-3350-1561"},
       {label:"Unità di Crisi Farnesina (dall'Italia)", value:"+39 06 36225"}
     ],
-    phrases: [
-      {jp:"Sumimasen", it:"Mi scusi / Permesso"},
-      {jp:"Arigatou gozaimasu", it:"Grazie mille"},
-      {jp:"Toire wa doko desu ka?", it:"Dov'è il bagno?"},
-      {jp:"Ikura desu ka?", it:"Quanto costa?"},
-      {jp:"Eigo ga hanasemasu ka?", it:"Parla inglese?"},
-      {jp:"Kore wa nan desu ka?", it:"Cos'è questo?"},
-      {jp:"Byouin wa doko desu ka?", it:"Dov'è l'ospedale?"},
-      {jp:"Tasukete kudasai", it:"Aiuto, per favore"}
+    phraseGroups: [
+      {category:"Base", items:[
+        {jp:"Konnichiwa", it:"Buongiorno"},
+        {jp:"Konbanwa", it:"Buonasera"},
+        {jp:"Arigatou gozaimasu", it:"Grazie"},
+        {jp:"Doumo arigatou gozaimasu", it:"Grazie mille"},
+        {jp:"Dou itashimashite", it:"Prego / di niente"},
+        {jp:"Sumimasen", it:"Mi scusi"},
+        {jp:"Onegaishimasu", it:"Per favore"},
+        {jp:"Hai", it:"Sì"},
+        {jp:"Iie", it:"No"},
+        {jp:"Wakarimasen", it:"Non capisco"},
+        {jp:"Eigo o hanasemasu ka?", it:"Parla inglese?"},
+        {jp:"Mou sukoshi yukkuri hanashite kudasai", it:"Può parlare più lentamente?"},
+        {jp:"Mou ichido onegaishimasu", it:"Può ripetere?"},
+      ]},
+      {category:"Orientamento", items:[
+        {jp:"... wa doko desu ka?", it:"Dov'è...?"},
+        {jp:"Eki wa doko desu ka?", it:"Dov'è la stazione?"},
+        {jp:"Toire wa doko desu ka?", it:"Dov'è il bagno?"},
+        {jp:"Tooi desu ka?", it:"È lontano?"},
+        {jp:"Aruite ikemasu ka?", it:"Posso andare a piedi?"},
+        {jp:"Koko ni ikitai desu", it:"Vorrei andare qui"},
+        {jp:"Kono juusho made onegaishimasu", it:"A questo indirizzo, per favore"},
+      ]},
+      {category:"Trasporti", items:[
+        {jp:"Kono densha wa ... ni ikimasu ka?", it:"Questo treno va a...?"},
+        {jp:"Nan-bansen desu ka?", it:"Quale binario?"},
+        {jp:"Norikae ga hitsuyou desu ka?", it:"Devo cambiare treno?"},
+        {jp:"... made ichimai onegaishimasu", it:"Un biglietto per..., per favore"},
+        {jp:"Kono seki wa shiteiseki desu ka?", it:"Questo posto è riservato?"},
+      ]},
+      {category:"Ristorante", items:[
+        {jp:"Futari desu", it:"Un tavolo per due, per favore"},
+        {jp:"Seki wa aiteimasu ka?", it:"Avete un tavolo libero?"},
+        {jp:"Menyuu o onegaishimasu", it:"Il menu, per favore"},
+        {jp:"Eigo no menyuu wa arimasu ka?", it:"Avete un menu in inglese?"},
+        {jp:"Kore o onegaishimasu", it:"Questo, per favore"},
+        {jp:"Osusume wa nan desu ka?", it:"Cosa consiglia?"},
+        {jp:"Karaku shinaide kudasai", it:"Senza piccante, per favore"},
+        {jp:"Arerugii ga arimasu", it:"Ho un'allergia"},
+        {jp:"Kore wa nan desu ka?", it:"Che cos'è questo?"},
+        {jp:"Okaikei onegaishimasu", it:"Il conto, per favore"},
+        {jp:"Kaado de haraemasu ka?", it:"Posso pagare con carta?"},
+      ]},
+      {category:"Shopping", items:[
+        {jp:"Ikura desu ka?", it:"Quanto costa?"},
+        {jp:"Kaado wa tsukaemasu ka?", it:"Posso pagare con carta?"},
+        {jp:"Motto ookii saizu wa arimasu ka?", it:"Avete una taglia più grande?"},
+      ]},
+      {category:"Utili", items:[
+        {jp:"Shashin o totte mo ii desu ka?", it:"Posso fare una foto?"},
+        {jp:"Waifai wa arimasu ka?", it:"Avete il Wi-Fi?"},
+      ]},
+      {category:"Emergenza", items:[
+        {jp:"Tasukete kudasai!", it:"Aiuto!"},
+        {jp:"Isha ga hitsuyou desu", it:"Ho bisogno di un medico"},
+        {jp:"Kyuukyuusha o yonde kudasai", it:"Chiamate un'ambulanza"},
+        {jp:"Pasupooto o nakushimashita", it:"Ho perso il passaporto"},
+      ]},
     ],
-    currencyRateJpyPerEur: 164
+    currencyRateJpyPerEur: 181
   };
 
   // Alloggi del viaggio, con indirizzo e telefono reali (utile se serve chiedere

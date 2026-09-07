@@ -267,3 +267,36 @@
   .jg-chat-mic{background:var(--card);border:1px solid var(--line);color:var(--indigo);}
   .jg-chat-mic.listening{background:var(--persimmon);color:#fff;border-color:var(--persimmon);}
   .jg-chat-note{font-size:10.5px;color:var(--muted);margin:0;line-height:1.5;}
+
+  .jg-phrasecat{border-top:0.5px solid var(--line);}
+  .jg-phrasecat:first-child{border-top:none;}
+  .jg-phrasecat-head{
+    width:100%;display:flex;align-items:center;gap:8px;padding:9px 2px;
+    background:none;border:none;font-size:12px;font-weight:700;color:var(--ink);text-align:left;
+  }
+  .jg-phrasecat-head .jg-count{
+    margin-left:auto;font-weight:400;color:var(--muted);font-size:10.5px;background:var(--paper);
+    padding:1px 7px;border-radius:10px;
+  }
+  .jg-phrasecat-head .jg-chev{color:var(--muted);transition:transform 0.15s;}
+  .jg-phrasecat.open .jg-phrasecat-head .jg-chev{transform:rotate(90deg);}
+  .jg-phrasecat-body{display:none;padding:2px 2px 8px;}
+  .jg-phrasecat.open .jg-phrasecat-body{display:block;}
+
+  .jg-usagebar-wrap{padding:0 2px;}
+  .jg-usagebar{width:100%;height:6px;border-radius:4px;background:var(--indigo-tint);overflow:hidden;}
+  .jg-usagebar-fill{height:100%;background:var(--moss);border-radius:4px;transition:width 0.3s;}
+  .jg-usagebar-fill.warn{background:#D9A441;}
+  .jg-usagebar-fill.over{background:var(--persimmon);}
+  .jg-usagebar-label{font-size:10px;color:var(--muted);margin:4px 0 0;}
+
+  .jg-info-collapsible{padding:0;overflow:hidden;}
+  .jg-info-collapse-head{
+    width:100%;display:flex;align-items:center;gap:6px;padding:12px 13px;
+    background:none;border:none;font-weight:700;font-size:12.5px;color:var(--ink);text-align:left;
+  }
+  .jg-info-collapsible.danger .jg-info-collapse-head{color:#7A2B21;}
+  .jg-info-collapse-head .jg-chev{margin-left:auto;color:var(--muted);transition:transform 0.15s;}
+  .jg-info-collapsible.open .jg-info-collapse-head .jg-chev{transform:rotate(90deg);}
+  .jg-info-collapse-body{display:none;padding:0 13px 13px;}
+  .jg-info-collapsible.open .jg-info-collapse-body{display:block;}

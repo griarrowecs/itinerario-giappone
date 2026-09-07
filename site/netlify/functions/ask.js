@@ -75,7 +75,15 @@ exports.handler = async function (event) {
       .join("")
       .trim() || "Non sono riuscito a generare una risposta.";
 
-    return { statusCode: 200, headers: corsHeaders(), body: JSON.stringify({ answer: answer }) };
+    var usage = data.usage || {};
+    return {
+      statusCode: 200,
+      headers: corsHeaders(),
+      body: JSON.stringify({
+        answer: answer,
+        usage: { inputTokens: usage.input_tokens || 0, outputTokens: usage.output_tokens || 0 }
+      }),
+    };
   } catch (e) {
     return { statusCode: 500, headers: corsHeaders(), body: JSON.stringify({ error: "Errore interno: " + (e && e.message) }) };
   }

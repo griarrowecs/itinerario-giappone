@@ -50,9 +50,9 @@
   var TRIP_YEAR = "2026";
 
   var state = {
-    days:[], food:[], lodging:[], openDay:0, activeTab:'itinerario', activePill:0,
+    days:[], food:[], lodging:[], apiUsage:{inputTokens:0, outputTokens:0}, openDay:0, activeTab:'itinerario', activePill:0,
     jrPassOpen:false, offline:false, pendingSync:false, diagOpen:false,
-    todayOpened:false
+    todayOpened:false, openPhraseCats:{}, openInfoCards:{}
   };
 
   // ============================== METEO ==============================
@@ -114,6 +114,24 @@
       if(c){ var k=c.join(','); if(!seen[k]){ seen[k]=true; fetchWeatherFor(c[0], c[1]); } }
     });
   }
+
+  // --- tasso di cambio live (servizio gratuito, senza chiave, dati BCE) ---
+  var currencyRate = null;      // null finché non arriva una risposta valida
+  var currencyLoadTriggered = false;
+  function loadCurrencyRate(){
+    if(currencyLoadTriggered) return;
+    currencyLoadTriggered = true;
+    fetch('https://api.frankfurter.app/latest?from=EUR&to=JPY')
+      .then(function(r){ return r.ok ? r.json() : null; })
+      .then(function(data){
+        if(data && data.rates && data.rates.JPY){ currencyRate = data.rates.JPY; render(); }
+      })
+      .catch(function(){}); // in caso di errore resta il valore di ripiego statico
+  }
+  function getCurrencyRate(){
+    return currencyRate || USEFUL_INFO.currencyRateJpyPerEur;
+  }
+
   function getDayWeather(day){
     var c = resolveCityCoords(day.city);
     if(!c) return null;
@@ -141,7 +159,7 @@
 
   function exportBackup(){
     try{
-      var payload = {days:state.days, food:state.food, lodging:state.lodging, exportedAt:new Date().toISOString(), app:"itinerario-giappone"};
+      var payload = {days:state.days, food:state.food, lodging:state.lodging, apiUsage:state.apiUsage, exportedAt:new Date().toISOString(), app:"itinerario-giappone"};
       var blob = new Blob([JSON.stringify(payload)], {type:"application/json"});
       var url = URL.createObjectURL(blob);
       var a2 = document.createElement('a');
@@ -170,6 +188,7 @@
         state.days = parsed.days;
         state.food = Array.isArray(parsed.food) ? parsed.food : [];
         state.lodging = Array.isArray(parsed.lodging) ? parsed.lodging : [];
+        state.apiUsage = parsed.apiUsage || {inputTokens:0, outputTokens:0};
         render();
         await saveData(true); // sovrascrittura totale deliberata, niente merge
         showToast("Backup ripristinato e sincronizzato");
@@ -318,7 +337,8 @@
     return saveInFlight || saveQueued ||
       Object.keys(dirtyItemIds).length > 0 || Object.keys(deletedItemIds).length > 0 ||
       Object.keys(dirtyFoodIds).length > 0 || Object.keys(deletedFoodIds).length > 0 ||
-      Object.keys(dirtyLodgingIds).length > 0 || Object.keys(deletedLodgingIds).length > 0;
+      Object.keys(dirtyLodgingIds).length > 0 || Object.keys(deletedLodgingIds).length > 0 ||
+      (pendingUsageDelta && (pendingUsageDelta.inputTokens > 0 || pendingUsageDelta.outputTokens > 0));
   }
   function cloneDeep(x){ return JSON.parse(JSON.stringify(x)); }
 
@@ -365,7 +385,7 @@
 
   // Unisce la versione più fresca del server con le sole tappe/cibo che
   // abbiamo toccato noi qui, mai spostando le tappe esistenti fuori posizione.
-  function mergeForSave(remoteDays, remoteFood, remoteLodging){
+  function mergeForSave(remoteDays, remoteFood, remoteLodging, remoteUsageIn){
     var merged = cloneDeep(remoteDays);
     merged.forEach(function(d){ d.items.forEach(function(it){ delete it.image; delete it.imageUrl; }); });
 
@@ -434,7 +454,13 @@
       else mergedLodging.push(cloneDeep(localLodging));
     });
 
-    return { days: merged, food: mergedFood, lodging: mergedLodging };
+    var remoteUsage = remoteUsageIn || {inputTokens:0, outputTokens:0};
+    var mergedUsage = {
+      inputTokens: (remoteUsage.inputTokens||0) + pendingUsageDelta.inputTokens,
+      outputTokens: (remoteUsage.outputTokens||0) + pendingUsageDelta.outputTokens
+    };
+
+    return { days: merged, food: mergedFood, lodging: mergedLodging, apiUsage: mergedUsage };
   }
 
   async function loadData(silent){
@@ -458,6 +484,7 @@
           state.days = cachedPending ? cachedPending.days : defaultDays();
           state.food = cachedPending ? (cachedPending.food || []) : defaultFood();
           state.lodging = cachedPending ? (cachedPending.lodging || []) : defaultLodging();
+          state.apiUsage = cachedPending ? (cachedPending.apiUsage || {inputTokens:0,outputTokens:0}) : {inputTokens:0,outputTokens:0};
           render();
         }
         if(!saveInFlight && !saveQueued) saveData();
@@ -470,6 +497,7 @@
           state.days = cached ? cached.days : defaultDays();
           state.food = cached ? (cached.food || []) : defaultFood();
           state.lodging = cached ? (cached.lodging || []) : defaultLodging();
+          state.apiUsage = cached ? (cached.apiUsage || {inputTokens:0,outputTokens:0}) : {inputTokens:0,outputTokens:0};
           render();
         }
         return;
@@ -487,6 +515,7 @@
           state.days = cached2 ? cached2.days : defaultDays();
           state.food = cached2 ? (cached2.food || []) : defaultFood();
           state.lodging = cached2 ? (cached2.lodging || []) : defaultLodging();
+          state.apiUsage = cached2 ? (cached2.apiUsage || {inputTokens:0,outputTokens:0}) : {inputTokens:0,outputTokens:0};
         }
         if(!silent) showToast("Sei offline: vedi l'ultima versione salvata su questo telefono");
         render();
@@ -503,7 +532,7 @@
         state.days = defaultDays();
         state.food = defaultFood();
         state.lodging = defaultLodging();
-        try{ await window.storage.set(STORAGE_KEY, JSON.stringify({days:state.days, food:state.food, lodging:state.lodging}), true); }catch(e2){}
+        try{ await window.storage.set(STORAGE_KEY, JSON.stringify({days:state.days, food:state.food, lodging:state.lodging, apiUsage:state.apiUsage}), true); }catch(e2){}
       }
       render();
     }
@@ -511,10 +540,12 @@
 
   function applyRemote(payload, silent){
     if(editingNow){ return; }
+    var incomingUsage = payload.apiUsage || {inputTokens:0, outputTokens:0};
     var changed = JSON.stringify(payload.days) !== JSON.stringify(state.days) || JSON.stringify(payload.food||[]) !== JSON.stringify(state.food) || JSON.stringify(payload.lodging||[]) !== JSON.stringify(state.lodging);
     state.days = payload.days;
     state.food = payload.food || [];
     state.lodging = payload.lodging || [];
+    state.apiUsage = incomingUsage;
     if(changed || !silent) render();
     else if(changed) showToast("Aggiornato");
   }
@@ -527,7 +558,7 @@
       return;
     }
     if(STORAGE_MODE === 'remote'){
-      localSet({days:state.days, food:state.food, lodging:state.lodging});
+      localSet({days:state.days, food:state.food, lodging:state.lodging, apiUsage:state.apiUsage});
 
       if(saveInFlight){
         saveQueued = true;
@@ -542,19 +573,22 @@
         }
         try{
           if(forceOverwrite){
-            var full = {days:state.days, food:state.food, lodging:state.lodging};
+            var full = {days:state.days, food:state.food, lodging:state.lodging, apiUsage:state.apiUsage};
             await remoteSet(full);
-            state.days = full.days; state.food = full.food; state.lodging = full.lodging;
+            state.days = full.days; state.food = full.food; state.lodging = full.lodging; state.apiUsage = full.apiUsage;
           } else {
             var remote = await remoteGet();
-            var merged = mergeForSave(remote.days, remote.food, remote.lodging);
+            var merged = mergeForSave(remote.days, remote.food, remote.lodging, remote.apiUsage);
             await remoteSet(merged);
             state.days = merged.days;
             state.food = merged.food;
             state.lodging = merged.lodging;
+            state.apiUsage = merged.apiUsage;
             localSet(merged);
           }
           clearDirty();
+          pendingUsageDelta = {inputTokens:0, outputTokens:0};
+          saveUsageDeltaToDisk();
           state.pendingSync = false;
           if(state.offline){ state.offline = false; }
           render();
@@ -577,7 +611,7 @@
       }
       return;
     }
-    var payloadCloud = {days:state.days, food:state.food, lodging:state.lodging};
+    var payloadCloud = {days:state.days, food:state.food, lodging:state.lodging, apiUsage:state.apiUsage};
     try{
       await window.storage.set(STORAGE_KEY, JSON.stringify(payloadCloud), true);
       clearDirty();
@@ -631,6 +665,7 @@
     var a = root();
     openTodayIfInRange();
     loadAllWeather();
+    loadCurrencyRate();
 
     var pillsHtml = state.days.map(function(d,i){
       return '<button class="jg-pill'+(i===state.openDay?' active':'')+'" data-pill="'+i+'">'+d.date+'<b>'+d.city.split(' ')[0].split('→')[0].trim()+'</b></button>';
@@ -696,7 +731,7 @@
           '<p>⚪ Tocca il cerchio a sinistra di ogni tappa per segnare se l\'avete vista o meno.</p>'+
           '<p>★ Segna le tappe considerate imperdibili nel programma originale.</p>'+
           '<p>🗺️ Tocca mappa per vedere come arrivarci.</p>'+
-          '<p>In blu le tappe che indicano uno spostamento con i mezzi.</p>'+
+          '<p>🚌 In blu le tappe che indicano uno spostamento con i mezzi.</p>'+
         '</div>'+
         '<div class="jg-body">'+daysHtml+'</div>';
     } else if(state.activeTab === 'cibo'){
@@ -760,6 +795,40 @@
   var speechRecognizer = null;
   var speechListening = false;
 
+  // --- consumo Virtual Giu, mostrato solo come barra (mai in soldi) ---
+  // Il totale condiviso vive nel bin come tutto il resto; teniamo un "delta"
+  // locale (quanto abbiamo aggiunto noi dall'ultima sincronizzazione riuscita)
+  // così due domande fatte quasi insieme da telefoni diversi si SOMMANO
+  // invece che una cancellare l'altra.
+  var USAGE_DELTA_KEY = STORAGE_KEY + "_usagedelta";
+  var pendingUsageDelta = {inputTokens:0, outputTokens:0};
+  var API_BUDGET_USD = (typeof API_BUDGET_USD_CONFIG !== 'undefined') ? API_BUDGET_USD_CONFIG : 5;
+  var PRICE_INPUT_PER_M = 3;   // $ ogni milione di token in ingresso (Sonnet 4.6)
+  var PRICE_OUTPUT_PER_M = 15; // $ ogni milione di token in uscita
+
+  function loadUsageDeltaFromDisk(){
+    try{
+      var raw = window.localStorage.getItem(USAGE_DELTA_KEY);
+      pendingUsageDelta = raw ? JSON.parse(raw) : {inputTokens:0, outputTokens:0};
+    }catch(e){ pendingUsageDelta = {inputTokens:0, outputTokens:0}; }
+  }
+  function saveUsageDeltaToDisk(){
+    try{ window.localStorage.setItem(USAGE_DELTA_KEY, JSON.stringify(pendingUsageDelta)); }catch(e){}
+  }
+  function addUsage(inputTokens, outputTokens){
+    inputTokens = inputTokens||0; outputTokens = outputTokens||0;
+    state.apiUsage.inputTokens += inputTokens;
+    state.apiUsage.outputTokens += outputTokens;
+    pendingUsageDelta.inputTokens += inputTokens;
+    pendingUsageDelta.outputTokens += outputTokens;
+    saveUsageDeltaToDisk();
+    saveData();
+  }
+  function usagePercent(){
+    var cost = (state.apiUsage.inputTokens/1000000*PRICE_INPUT_PER_M) + (state.apiUsage.outputTokens/1000000*PRICE_OUTPUT_PER_M);
+    return Math.max(0, Math.min(100, Math.round(cost/API_BUDGET_USD*100)));
+  }
+
   function loadChatFromDisk(){
     try{
       var raw = window.localStorage.getItem(CHAT_KEY);
@@ -821,6 +890,16 @@
     speechListening = false;
   }
 
+  async function askBackend(text){
+    var res = await fetch('/.netlify/functions/ask', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({message:text, days:state.days, food:state.food, lodging:state.lodging})
+    });
+    var data = await res.json().catch(function(){ return null; });
+    return {ok: res.ok && data && data.answer, status: res.status, data: data};
+  }
+
   async function sendChatMessage(text){
     text = (text||'').trim();
     if(!text || chatBusy) return;
@@ -828,18 +907,22 @@
     chatBusy = true;
     render();
     try{
-      var res = await fetch('/.netlify/functions/ask', {
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body: JSON.stringify({message:text, days:state.days, food:state.food, lodging:state.lodging})
-      });
-      var data = await res.json().catch(function(){ return null; });
-      if(!res.ok || !data || !data.answer){
-        var errMsg = (data && data.error) ? data.error : ("Errore "+res.status);
+      var result = await askBackend(text);
+      if(!result.ok){
+        // un blip transitorio (rete, cold start della funzione) capita ogni tanto:
+        // un solo ritentativo silenzioso prima di mostrare davvero un errore.
+        await new Promise(function(r){ setTimeout(r, 1200); });
+        result = await askBackend(text);
+      }
+      if(!result.ok){
+        var d = result.data;
+        var errMsg = (d && d.error) ? d.error : ("Errore "+result.status);
+        if(d && d.detail) errMsg += " — " + d.detail;
         pushChatMessage('assistant', "Non sono riuscito a rispondere: "+errMsg);
       } else {
-        pushChatMessage('assistant', data.answer);
-        speak(data.answer);
+        pushChatMessage('assistant', result.data.answer);
+        speak(result.data.answer);
+        if(result.data.usage) addUsage(result.data.usage.inputTokens, result.data.usage.outputTokens);
       }
     }catch(e){
       pushChatMessage('assistant', "Connessione non riuscita. Controlla la rete e riprova.");
@@ -850,6 +933,8 @@
 
   function renderChatTab(){
     var supportsVoiceIn = speechSupported();
+    var pct = usagePercent();
+    var pctClass = pct >= 90 ? 'over' : (pct >= 65 ? 'warn' : '');
     var bubbles = chatLog.map(function(m){
       return '<div class="jg-chat-msg '+(m.role==='user'?'user':'assistant')+'">'+
         '<p>'+escapeHtml(m.text)+'</p>'+
@@ -859,6 +944,10 @@
       '<div class="jg-chat">'+
         '<div class="jg-chat-intro">'+
           '<p><b>Virtual Giu</b> risponde usando il vostro itinerario reale. Le conversazioni restano solo su questo telefono, non vengono salvate online.</p>'+
+        '</div>'+
+        '<div class="jg-usagebar-wrap">'+
+          '<div class="jg-usagebar"><div class="jg-usagebar-fill '+pctClass+'" style="width:'+pct+'%;"></div></div>'+
+          '<p class="jg-usagebar-label">Quanto avete usato Virtual Giu finora</p>'+
         '</div>'+
         '<div class="jg-chat-log" id="jg-chat-log">'+
           (chatLog.length ? bubbles : '<p class="jg-food-empty">Scrivi o registra un messaggio per iniziare.</p>')+
@@ -959,36 +1048,59 @@
   }
 
   function renderInfoTab(){
-    var rate = USEFUL_INFO.currencyRateJpyPerEur;
+    var rate = getCurrencyRate();
+    var rateIsLive = currencyRate !== null;
+
+    function collapsible(key, icon, title, bodyHtml, extraClass){
+      var open = !!state.openInfoCards[key];
+      return (
+        '<div class="jg-info-card jg-info-collapsible'+(open?' open':'')+(extraClass?' '+extraClass:'')+'">'+
+          '<button class="jg-info-collapse-head" data-infocard="'+key+'">'+icon+' '+title+
+            '<span class="jg-chev">&#8250;</span>'+
+          '</button>'+
+          '<div class="jg-info-collapse-body">'+bodyHtml+'</div>'+
+        '</div>'
+      );
+    }
 
     return (
       '<div class="jg-info">'+
         '<div class="jg-info-card">'+
           '<p class="jg-info-title">💴 Cambio veloce</p>'+
-          '<p class="jg-info-empty">Tasso indicativo: 1€ ≈ '+rate+'¥ — verifica quello del giorno prima di viaggi importanti.</p>'+
+          '<p class="jg-info-empty">1€ ≈ '+rate.toFixed(2)+'¥ — '+(rateIsLive ? 'aggiornato ora' : 'stima, verifica quello del giorno')+'.</p>'+
           '<div class="jg-conv-row">'+
             '<input type="number" id="jg-conv-eur" placeholder="Euro" style="width:100%;padding:8px 10px;border:0.5px solid var(--line);border-radius:6px;font-size:13px;">'+
             '<span>=</span>'+
             '<input type="number" id="jg-conv-jpy" placeholder="Yen" style="width:100%;padding:8px 10px;border:0.5px solid var(--line);border-radius:6px;font-size:13px;">'+
           '</div>'+
         '</div>'+
-        '<div class="jg-info-card danger">'+
-          '<p class="jg-info-title">🚨 Emergenze</p>'+
+        collapsible('emergenze', '🚨', 'Emergenze',
           USEFUL_INFO.emergency.map(function(e){
             return '<p class="jg-info-row"><b>'+escapeHtml(e.label)+'</b><span>'+escapeHtml(e.value)+'</span>'+(e.note?'<i>'+escapeHtml(e.note)+'</i>':'')+'</p>';
-          }).join('')+
-        '</div>'+
-        '<div class="jg-info-card">'+
-          '<p class="jg-info-title">🏨 Alloggi del viaggio</p>'+
+          }).join(''),
+          'danger'
+        )+
+        collapsible('alloggi', '🏨', 'Alloggi del viaggio',
           renderLodgingList()+
-          '<button class="jg-add" id="jg-lodging-add" style="margin-top:8px;">+ aggiungi alloggio</button>'+
-        '</div>'+
-        '<div class="jg-info-card">'+
-          '<p class="jg-info-title">💬 Frasi utili</p>'+
-          USEFUL_INFO.phrases.map(function(p){
-            return '<p class="jg-info-row"><b>'+escapeHtml(p.jp)+'</b><span>'+escapeHtml(p.it)+'</span></p>';
-          }).join('')+
-        '</div>'+
+          '<button class="jg-add" id="jg-lodging-add" style="margin-top:8px;">+ aggiungi alloggio</button>'
+        )+
+        collapsible('frasi', '💬', 'Frasi utili',
+          USEFUL_INFO.phraseGroups.map(function(g, gi){
+            var open = !!state.openPhraseCats[g.category];
+            return (
+              '<div class="jg-phrasecat'+(open?' open':'')+'">'+
+                '<button class="jg-phrasecat-head" data-phrasecat="'+escapeHtml(g.category)+'">'+escapeHtml(g.category)+
+                  '<span class="jg-count">'+g.items.length+'</span><span class="jg-chev">&#8250;</span>'+
+                '</button>'+
+                '<div class="jg-phrasecat-body">'+
+                  g.items.map(function(p){
+                    return '<p class="jg-info-row"><b>'+escapeHtml(p.jp)+'</b><span>'+escapeHtml(p.it)+'</span></p>';
+                  }).join('')+
+                '</div>'+
+              '</div>'
+            );
+          }).join('')
+        )+
       '</div>'
     );
   }
@@ -1150,6 +1262,22 @@
       render();
     });
 
+    a.querySelectorAll('[data-phrasecat]').forEach(function(el){
+      el.addEventListener('click', function(){
+        var cat = el.getAttribute('data-phrasecat');
+        state.openPhraseCats[cat] = !state.openPhraseCats[cat];
+        render();
+      });
+    });
+
+    a.querySelectorAll('[data-infocard]').forEach(function(el){
+      el.addEventListener('click', function(){
+        var key = el.getAttribute('data-infocard');
+        state.openInfoCards[key] = !state.openInfoCards[key];
+        render();
+      });
+    });
+
     var diagToggle = document.getElementById('jg-diag-toggle');
     if(diagToggle) diagToggle.addEventListener('click', function(){
       state.diagOpen = !state.diagOpen;
@@ -1306,11 +1434,11 @@
     var convJpy = document.getElementById('jg-conv-jpy');
     if(convEur) convEur.addEventListener('input', function(){
       var v = parseFloat(convEur.value);
-      if(convJpy) convJpy.value = isNaN(v) ? '' : Math.round(v * USEFUL_INFO.currencyRateJpyPerEur);
+      if(convJpy) convJpy.value = isNaN(v) ? '' : Math.round(v * getCurrencyRate());
     });
     if(convJpy) convJpy.addEventListener('input', function(){
       var v = parseFloat(convJpy.value);
-      if(convEur) convEur.value = isNaN(v) ? '' : (v / USEFUL_INFO.currencyRateJpyPerEur).toFixed(2);
+      if(convEur) convEur.value = isNaN(v) ? '' : (v / getCurrencyRate()).toFixed(2);
     });
 
     // --- Virtual Giu ---
@@ -1419,7 +1547,10 @@
   async function startApp(){
     loadDirtyFromDisk();
     loadChatFromDisk();
+    loadUsageDeltaFromDisk();
     await loadData(true);
+    state.apiUsage.inputTokens += pendingUsageDelta.inputTokens;
+    state.apiUsage.outputTokens += pendingUsageDelta.outputTokens;
     await maybeSeedFood();
     await maybeSeedLodging();
     await maybeBackfillFoodWebsites();
