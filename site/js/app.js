@@ -121,10 +121,10 @@
   function loadCurrencyRate(){
     if(currencyLoadTriggered) return;
     currencyLoadTriggered = true;
-    fetch('https://api.frankfurter.app/latest?from=EUR&to=JPY')
+    fetch('https://api.frankfurter.dev/v2/rate/EUR/JPY')
       .then(function(r){ return r.ok ? r.json() : null; })
       .then(function(data){
-        if(data && data.rates && data.rates.JPY){ currencyRate = data.rates.JPY; render(); }
+        if(data && typeof data.rate === 'number'){ currencyRate = data.rate; render(); }
       })
       .catch(function(){}); // in caso di errore resta il valore di ripiego statico
   }
@@ -894,7 +894,14 @@
     var res = await fetch('/.netlify/functions/ask', {
       method:'POST',
       headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({message:text, days:state.days, food:state.food, lodging:state.lodging})
+      body: JSON.stringify({
+        message:text, days:state.days, food:state.food, lodging:state.lodging,
+        usefulInfo: {
+          emergency: USEFUL_INFO.emergency,
+          phraseGroups: USEFUL_INFO.phraseGroups,
+          currencyRateJpyPerEur: getCurrencyRate()
+        }
+      })
     });
     var data = await res.json().catch(function(){ return null; });
     return {ok: res.ok && data && data.answer, status: res.status, data: data};

@@ -36,13 +36,15 @@ exports.handler = async function (event) {
     return { statusCode: 400, headers: corsHeaders(), body: JSON.stringify({ error: "Messaggio mancante" }) };
   }
 
-  var context = buildContext(body.days, body.food, body.lodging);
+  var context = buildContext(body.days, body.food, body.lodging, body.usefulInfo);
   var systemPrompt =
     "Sei 'Virtual Giu', l'assistente di viaggio per un gruppo in Giappone dal 13 al 25 settembre 2026. " +
     "Rispondi in italiano, in modo breve, chiaro e colloquiale (la risposta verrà spesso letta ad alta voce dal telefono: " +
     "evita elenchi puntati, markdown, o formattazioni — scrivi come parleresti). " +
-    "Usa SOLO le informazioni sull'itinerario reale fornite qui sotto; se non trovi la risposta in questi dati, dillo onestamente " +
-    "invece di inventare orari, prezzi o indirizzi.\n\n" + context;
+    "Usa SOLO le informazioni sull'itinerario, cibo, alloggi ed emergenze fornite qui sotto; se non trovi la risposta in questi dati, dillo onestamente " +
+    "invece di inventare orari, prezzi o indirizzi. " +
+    "Se ti chiedono di convertire euro in yen (o viceversa), usa il tasso di cambio indicato qui sotto e fai tu il calcolo. " +
+    "Se ti chiedono come si dice qualcosa in giapponese, cerca prima tra le frasi fornite; se non c'è, puoi comunque aiutare con la tua conoscenza generale del giapponese, specificando che non è una frase pre-verificata dell'itinerario.\n\n" + context;
 
   try {
     var res = await fetch("https://api.anthropic.com/v1/messages", {
@@ -101,7 +103,7 @@ function corsHeaders() {
 // Riassume l'itinerario reale (con le modifiche fatte finora) in testo
 // semplice, così Virtual Giu risponde in base a quello che avete DAVVERO
 // pianificato, non a un itinerario generico.
-function buildContext(days, food, lodging) {
+function buildContext(days, food, lodging, usefulInfo) {
   var lines = [];
   lines.push("ITINERARIO:");
   (days || []).forEach(function (d) {
@@ -127,7 +129,26 @@ function buildContext(days, food, lodging) {
       );
     });
   }
+  if (usefulInfo) {
+    if (usefulInfo.emergency && usefulInfo.emergency.length) {
+      lines.push("\nEMERGENZE:");
+      usefulInfo.emergency.forEach(function (e) {
+        lines.push("- " + e.label + ": " + e.value + (e.note ? " (" + e.note + ")" : ""));
+      });
+    }
+    if (typeof usefulInfo.currencyRateJpyPerEur === "number") {
+      lines.push("\nCAMBIO VALUTA: 1 EUR = " + usefulInfo.currencyRateJpyPerEur + " JPY (tasso attuale, usalo per qualunque conversione ti venga chiesta).");
+    }
+    if (usefulInfo.phraseGroups && usefulInfo.phraseGroups.length) {
+      lines.push("\nFRASI IN GIAPPONESE GIÀ PRONTE (categoria: frase romaji = traduzione):");
+      usefulInfo.phraseGroups.forEach(function (g) {
+        (g.items || []).forEach(function (p) {
+          lines.push("- [" + g.category + "] " + p.jp + " = " + p.it);
+        });
+      });
+    }
+  }
   var full = lines.join("\n");
-  if (full.length > 12000) full = full.slice(0, 12000) + "\n[...troncato per lunghezza...]";
+  if (full.length > 16000) full = full.slice(0, 16000) + "\n[...troncato per lunghezza...]";
   return full;
 }
