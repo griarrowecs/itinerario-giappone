@@ -50,7 +50,7 @@
   var TRIP_YEAR = "2026";
 
   var state = {
-    days:[], food:[], lodging:[], apiUsage:{inputTokens:0, outputTokens:0}, openDay:0, activeTab:'itinerario', activePill:0,
+    days:[], food:[], lodging:[], recommendations:[], apiUsage:{inputTokens:0, outputTokens:0}, openDay:0, activeTab:'itinerario', activePill:0,
     jrPassOpen:false, offline:false, pendingSync:false, diagOpen:false,
     todayOpened:false, openPhraseCats:{}, openInfoCards:{}
   };
@@ -105,6 +105,52 @@
       .catch(function(){ weatherResults[key] = 'error'; weatherFetching[key] = false; render(); });
   }
   var weatherLoadTriggered = false;
+  // --- striscia di notizie NHK World, tradotte in italiano ---
+  // Cache di alcune ore: non si richiama la funzione (che consuma credito
+  // API) ad ogni apertura dell'app, solo quando la cache è scaduta.
+  var NEWS_KEY = STORAGE_KEY + "_news";
+  var NEWS_CACHE_HOURS = 5;
+  var newsHeadlines = [];
+  var newsLoadTriggered = false;
+  function loadNewsFromCache(){
+    try{
+      var raw = window.localStorage.getItem(NEWS_KEY);
+      if(!raw) return null;
+      var parsed = JSON.parse(raw);
+      var ageHours = (Date.now() - parsed.ts) / 3600000;
+      if(ageHours > NEWS_CACHE_HOURS) return null;
+      return parsed.headlines;
+    }catch(e){ return null; }
+  }
+  function saveNewsToCache(headlines){
+    try{ window.localStorage.setItem(NEWS_KEY, JSON.stringify({headlines:headlines, ts:Date.now()})); }catch(e){}
+  }
+  function loadNews(){
+    if(newsLoadTriggered) return;
+    newsLoadTriggered = true;
+    var cached = loadNewsFromCache();
+    if(cached && cached.length){ newsHeadlines = cached; render(); return; }
+    fetch('/.netlify/functions/news')
+      .then(function(r){ return r.ok ? r.json() : null; })
+      .then(function(data){
+        if(data && Array.isArray(data.headlines) && data.headlines.length){
+          newsHeadlines = data.headlines;
+          saveNewsToCache(newsHeadlines);
+          render();
+        }
+      })
+      .catch(function(){}); // in caso di errore, la striscia semplicemente non appare
+  }
+  function renderNewsTicker(){
+    if(!newsHeadlines.length) return '';
+    var text = newsHeadlines.map(function(h){ return escapeHtml(h); }).join(' &nbsp;&nbsp;•&nbsp;&nbsp; ');
+    return (
+      '<div class="jg-newsticker"><div class="jg-newsticker-track">'+
+        '<span>🗾 '+text+'</span><span>🗾 '+text+'</span>'+
+      '</div></div>'
+    );
+  }
+
   function loadAllWeather(){
     if(weatherLoadTriggered || !state.days.length) return;
     weatherLoadTriggered = true;
@@ -159,7 +205,7 @@
 
   function exportBackup(){
     try{
-      var payload = {days:state.days, food:state.food, lodging:state.lodging, apiUsage:state.apiUsage, exportedAt:new Date().toISOString(), app:"itinerario-giappone"};
+      var payload = {days:state.days, food:state.food, lodging:state.lodging, recommendations:state.recommendations, apiUsage:state.apiUsage, exportedAt:new Date().toISOString(), app:"itinerario-giappone"};
       var blob = new Blob([JSON.stringify(payload)], {type:"application/json"});
       var url = URL.createObjectURL(blob);
       var a2 = document.createElement('a');
@@ -188,6 +234,7 @@
         state.days = parsed.days;
         state.food = Array.isArray(parsed.food) ? parsed.food : [];
         state.lodging = Array.isArray(parsed.lodging) ? parsed.lodging : [];
+        state.recommendations = Array.isArray(parsed.recommendations) ? parsed.recommendations : [];
         state.apiUsage = parsed.apiUsage || {inputTokens:0, outputTokens:0};
         render();
         await saveData(true); // sovrascrittura totale deliberata, niente merge
@@ -300,12 +347,15 @@
   var deletedFoodIds = {};
   var dirtyLodgingIds = {};   // stesso meccanismo, per la sezione alloggi
   var deletedLodgingIds = {};
+  var dirtyRecoIds = {};      // stesso meccanismo, per la sezione consigli
+  var deletedRecoIds = {};
 
   function saveDirtyToDisk(){
     try{ window.localStorage.setItem(DIRTY_KEY, JSON.stringify({
       dirty:dirtyItemIds, deleted:deletedItemIds,
       foodDirty:dirtyFoodIds, foodDeleted:deletedFoodIds,
-      lodgingDirty:dirtyLodgingIds, lodgingDeleted:deletedLodgingIds
+      lodgingDirty:dirtyLodgingIds, lodgingDeleted:deletedLodgingIds,
+      recoDirty:dirtyRecoIds, recoDeleted:deletedRecoIds
     })); }catch(e){}
   }
   function loadDirtyFromDisk(){
@@ -319,6 +369,8 @@
       deletedFoodIds = parsed.foodDeleted || {};
       dirtyLodgingIds = parsed.lodgingDirty || {};
       deletedLodgingIds = parsed.lodgingDeleted || {};
+      dirtyRecoIds = parsed.recoDirty || {};
+      deletedRecoIds = parsed.recoDeleted || {};
     }catch(e){}
   }
   function markDirty(itemId){ dirtyItemIds[itemId] = true; delete deletedItemIds[itemId]; saveDirtyToDisk(); }
@@ -327,10 +379,13 @@
   function markFoodDeleted(id){ delete dirtyFoodIds[id]; deletedFoodIds[id] = true; saveDirtyToDisk(); }
   function markLodgingDirty(id){ dirtyLodgingIds[id] = true; delete deletedLodgingIds[id]; saveDirtyToDisk(); }
   function markLodgingDeleted(id){ delete dirtyLodgingIds[id]; deletedLodgingIds[id] = true; saveDirtyToDisk(); }
+  function markRecoDirty(id){ dirtyRecoIds[id] = true; delete deletedRecoIds[id]; saveDirtyToDisk(); }
+  function markRecoDeleted(id){ delete dirtyRecoIds[id]; deletedRecoIds[id] = true; saveDirtyToDisk(); }
   function clearDirty(){
     dirtyItemIds = {}; deletedItemIds = {};
     dirtyFoodIds = {}; deletedFoodIds = {};
     dirtyLodgingIds = {}; deletedLodgingIds = {};
+    dirtyRecoIds = {}; deletedRecoIds = {};
     saveDirtyToDisk();
   }
   function hasPendingLocalChanges(){
@@ -338,13 +393,14 @@
       Object.keys(dirtyItemIds).length > 0 || Object.keys(deletedItemIds).length > 0 ||
       Object.keys(dirtyFoodIds).length > 0 || Object.keys(deletedFoodIds).length > 0 ||
       Object.keys(dirtyLodgingIds).length > 0 || Object.keys(deletedLodgingIds).length > 0 ||
+      Object.keys(dirtyRecoIds).length > 0 || Object.keys(deletedRecoIds).length > 0 ||
       (pendingUsageDelta && (pendingUsageDelta.inputTokens > 0 || pendingUsageDelta.outputTokens > 0));
   }
   function cloneDeep(x){ return JSON.parse(JSON.stringify(x)); }
 
   function currentPayloadBytes(){
-    try{ return new Blob([JSON.stringify({days:state.days, food:state.food, lodging:state.lodging})]).size; }
-    catch(e){ return JSON.stringify({days:state.days, food:state.food, lodging:state.lodging}).length; }
+    try{ return new Blob([JSON.stringify({days:state.days, food:state.food, lodging:state.lodging, recommendations:state.recommendations})]).size; }
+    catch(e){ return JSON.stringify({days:state.days, food:state.food, lodging:state.lodging, recommendations:state.recommendations}).length; }
   }
 
   function timeMinutes(t){
@@ -385,7 +441,7 @@
 
   // Unisce la versione più fresca del server con le sole tappe/cibo che
   // abbiamo toccato noi qui, mai spostando le tappe esistenti fuori posizione.
-  function mergeForSave(remoteDays, remoteFood, remoteLodging, remoteUsageIn){
+  function mergeForSave(remoteDays, remoteFood, remoteLodging, remoteUsageIn, remoteReco){
     var merged = cloneDeep(remoteDays);
     merged.forEach(function(d){ d.items.forEach(function(it){ delete it.image; delete it.imageUrl; }); });
 
@@ -454,13 +510,26 @@
       else mergedLodging.push(cloneDeep(localLodging));
     });
 
+    // --- stessa logica per i consigli, elenco piatto come il cibo ---
+    var mergedReco = cloneDeep(remoteReco || []);
+    Object.keys(deletedRecoIds).forEach(function(id){
+      for(var i=0;i<mergedReco.length;i++){ if(mergedReco[i].id===id){ mergedReco.splice(i,1); break; } }
+    });
+    Object.keys(dirtyRecoIds).forEach(function(id){
+      var localReco = state.recommendations.find(function(f){ return f.id===id; });
+      if(!localReco) return;
+      var idx = mergedReco.findIndex(function(f){ return f.id===id; });
+      if(idx !== -1) mergedReco[idx] = cloneDeep(localReco);
+      else mergedReco.push(cloneDeep(localReco));
+    });
+
     var remoteUsage = remoteUsageIn || {inputTokens:0, outputTokens:0};
     var mergedUsage = {
       inputTokens: (remoteUsage.inputTokens||0) + pendingUsageDelta.inputTokens,
       outputTokens: (remoteUsage.outputTokens||0) + pendingUsageDelta.outputTokens
     };
 
-    return { days: merged, food: mergedFood, lodging: mergedLodging, apiUsage: mergedUsage };
+    return { days: merged, food: mergedFood, lodging: mergedLodging, recommendations: mergedReco, apiUsage: mergedUsage };
   }
 
   async function loadData(silent){
@@ -472,7 +541,8 @@
         state.days = defaultDays();
         state.food = defaultFood();
         state.lodging = defaultLodging();
-        localSet({days:state.days, food:state.food, lodging:state.lodging});
+        state.recommendations = defaultRecommendations();
+        localSet({days:state.days, food:state.food, lodging:state.lodging, recommendations:state.recommendations});
       }
       render();
       return;
@@ -484,6 +554,7 @@
           state.days = cachedPending ? cachedPending.days : defaultDays();
           state.food = cachedPending ? (cachedPending.food || []) : defaultFood();
           state.lodging = cachedPending ? (cachedPending.lodging || []) : defaultLodging();
+          state.recommendations = cachedPending ? (cachedPending.recommendations || []) : defaultRecommendations();
           state.apiUsage = cachedPending ? (cachedPending.apiUsage || {inputTokens:0,outputTokens:0}) : {inputTokens:0,outputTokens:0};
           render();
         }
@@ -497,6 +568,7 @@
           state.days = cached ? cached.days : defaultDays();
           state.food = cached ? (cached.food || []) : defaultFood();
           state.lodging = cached ? (cached.lodging || []) : defaultLodging();
+          state.recommendations = cached ? (cached.recommendations || []) : defaultRecommendations();
           state.apiUsage = cached ? (cached.apiUsage || {inputTokens:0,outputTokens:0}) : {inputTokens:0,outputTokens:0};
           render();
         }
@@ -515,6 +587,7 @@
           state.days = cached2 ? cached2.days : defaultDays();
           state.food = cached2 ? (cached2.food || []) : defaultFood();
           state.lodging = cached2 ? (cached2.lodging || []) : defaultLodging();
+          state.recommendations = cached2 ? (cached2.recommendations || []) : defaultRecommendations();
           state.apiUsage = cached2 ? (cached2.apiUsage || {inputTokens:0,outputTokens:0}) : {inputTokens:0,outputTokens:0};
         }
         if(!silent) showToast("Sei offline: vedi l'ultima versione salvata su questo telefono");
@@ -525,14 +598,15 @@
     try{
       var res = await window.storage.get(STORAGE_KEY, true);
       var parsed = JSON.parse(res.value);
-      var payload2 = Array.isArray(parsed) ? {days:parsed, food:[], lodging:[]} : parsed;
+      var payload2 = Array.isArray(parsed) ? {days:parsed, food:[], lodging:[], recommendations:[]} : parsed;
       applyRemote(payload2, silent);
     }catch(e){
       if(!state.days.length){
         state.days = defaultDays();
         state.food = defaultFood();
         state.lodging = defaultLodging();
-        try{ await window.storage.set(STORAGE_KEY, JSON.stringify({days:state.days, food:state.food, lodging:state.lodging, apiUsage:state.apiUsage}), true); }catch(e2){}
+        state.recommendations = defaultRecommendations();
+        try{ await window.storage.set(STORAGE_KEY, JSON.stringify({days:state.days, food:state.food, lodging:state.lodging, recommendations:state.recommendations, apiUsage:state.apiUsage}), true); }catch(e2){}
       }
       render();
     }
@@ -541,10 +615,11 @@
   function applyRemote(payload, silent){
     if(editingNow){ return; }
     var incomingUsage = payload.apiUsage || {inputTokens:0, outputTokens:0};
-    var changed = JSON.stringify(payload.days) !== JSON.stringify(state.days) || JSON.stringify(payload.food||[]) !== JSON.stringify(state.food) || JSON.stringify(payload.lodging||[]) !== JSON.stringify(state.lodging);
+    var changed = JSON.stringify(payload.days) !== JSON.stringify(state.days) || JSON.stringify(payload.food||[]) !== JSON.stringify(state.food) || JSON.stringify(payload.lodging||[]) !== JSON.stringify(state.lodging) || JSON.stringify(payload.recommendations||[]) !== JSON.stringify(state.recommendations);
     state.days = payload.days;
     state.food = payload.food || [];
     state.lodging = payload.lodging || [];
+    state.recommendations = payload.recommendations || [];
     state.apiUsage = incomingUsage;
     if(changed || !silent) render();
     else if(changed) showToast("Aggiornato");
@@ -552,13 +627,13 @@
 
   async function saveData(forceOverwrite){
     if(STORAGE_MODE === 'local' || STORAGE_MODE === 'unconfigured'){
-      var payloadLocal = {days:state.days, food:state.food, lodging:state.lodging};
+      var payloadLocal = {days:state.days, food:state.food, lodging:state.lodging, recommendations:state.recommendations, apiUsage:state.apiUsage};
       var ok = localSet(payloadLocal);
       if(!ok) showToast("Errore nel salvataggio sul telefono");
       return;
     }
     if(STORAGE_MODE === 'remote'){
-      localSet({days:state.days, food:state.food, lodging:state.lodging, apiUsage:state.apiUsage});
+      localSet({days:state.days, food:state.food, lodging:state.lodging, recommendations:state.recommendations, apiUsage:state.apiUsage});
 
       if(saveInFlight){
         saveQueued = true;
@@ -573,16 +648,17 @@
         }
         try{
           if(forceOverwrite){
-            var full = {days:state.days, food:state.food, lodging:state.lodging, apiUsage:state.apiUsage};
+            var full = {days:state.days, food:state.food, lodging:state.lodging, recommendations:state.recommendations, apiUsage:state.apiUsage};
             await remoteSet(full);
-            state.days = full.days; state.food = full.food; state.lodging = full.lodging; state.apiUsage = full.apiUsage;
+            state.days = full.days; state.food = full.food; state.lodging = full.lodging; state.recommendations = full.recommendations; state.apiUsage = full.apiUsage;
           } else {
             var remote = await remoteGet();
-            var merged = mergeForSave(remote.days, remote.food, remote.lodging, remote.apiUsage);
+            var merged = mergeForSave(remote.days, remote.food, remote.lodging, remote.apiUsage, remote.recommendations);
             await remoteSet(merged);
             state.days = merged.days;
             state.food = merged.food;
             state.lodging = merged.lodging;
+            state.recommendations = merged.recommendations;
             state.apiUsage = merged.apiUsage;
             localSet(merged);
           }
@@ -611,7 +687,7 @@
       }
       return;
     }
-    var payloadCloud = {days:state.days, food:state.food, lodging:state.lodging, apiUsage:state.apiUsage};
+    var payloadCloud = {days:state.days, food:state.food, lodging:state.lodging, recommendations:state.recommendations, apiUsage:state.apiUsage};
     try{
       await window.storage.set(STORAGE_KEY, JSON.stringify(payloadCloud), true);
       clearDirty();
@@ -631,6 +707,10 @@
   }
   function findLodging(id){
     for(var i=0;i<state.lodging.length;i++){ if(state.lodging[i].id===id) return {item:state.lodging[i], idx:i}; }
+    return null;
+  }
+  function findReco(id){
+    for(var i=0;i<state.recommendations.length;i++){ if(state.recommendations[i].id===id) return {item:state.recommendations[i], idx:i}; }
     return null;
   }
 
@@ -666,6 +746,7 @@
     openTodayIfInRange();
     loadAllWeather();
     loadCurrencyRate();
+    loadNews();
 
     var pillsHtml = state.days.map(function(d,i){
       return '<button class="jg-pill'+(i===state.openDay?' active':'')+'" data-pill="'+i+'">'+d.date+'<b>'+d.city.split(' ')[0].split('→')[0].trim()+'</b></button>';
@@ -767,6 +848,7 @@
         '</div>'+
         '<button class="jg-mapbox" id="jg-map-thumb" aria-label="Apri mappa itinerario">&#128506;</button>'+
       '</div>'+
+      renderNewsTicker()+
       tabsHtml+
       bodyHtml+
       '<div class="jg-toast"></div>'+
@@ -1018,6 +1100,63 @@
   }
 
   // ============================== INFO UTILI ==============================
+  function renderRecoList(){
+    if(!state.recommendations.length) return '<p class="jg-info-empty">Nessun consiglio inserito ancora.</p>';
+    var sorted = state.recommendations.slice().sort(function(a,b){
+      return (a.giorno||"").localeCompare(b.giorno||"");
+    });
+    return '<div class="jg-rail">'+sorted.map(renderRecoItem).join('')+'</div>';
+  }
+  function renderRecoItem(r){
+    var isEditing = editingNow && editingNow.reco === r.id;
+    var titleHtml = r.sito
+      ? '<a class="jg-name jg-name-link" href="'+escapeHtml(r.sito)+'" target="_blank" rel="noopener">'+escapeHtml(r.titolo)+' &#8599;</a>'
+      : '<p class="jg-name">'+escapeHtml(r.titolo)+'</p>';
+    var zoneLine = [r.giorno, r.zona].filter(Boolean).join(' · ');
+    var body =
+      '<div class="jg-row">'+
+        '<div class="jg-main">'+
+          (zoneLine ? '<p class="jg-time">'+escapeHtml(zoneLine)+'</p>' : '')+
+          titleHtml+(r.hype ? ' <span style="font-size:12px;">'+escapeHtml(r.hype)+'</span>' : '')+
+          (r.perche ? '<p class="jg-note">'+escapeHtml(r.perche)+'</p>' : '')+
+          (r.orario || r.prenotNote ? '<p class="jg-note">'+[r.orario, r.prenotNote].filter(Boolean).join(' · ')+'</p>' : '')+
+          (r.noteItin ? '<p class="jg-note" style="font-style:italic;">'+escapeHtml(r.noteItin)+'</p>' : '')+
+          '<div style="display:flex;gap:10px;flex-wrap:wrap;">'+
+            (r.linkPrenot ? '<a class="jg-link" href="'+escapeHtml(r.linkPrenot)+'" target="_blank" rel="noopener">prenota &#8599;</a>' : '')+
+            (r.maps ? '<a class="jg-link" href="'+escapeHtml(r.maps)+'" target="_blank" rel="noopener">mappa &#8599;</a>' : '')+
+          '</div>'+
+        '</div>'+
+        '<button class="jg-edit-toggle" data-redit="'+r.id+'">'+(isEditing?'chiudi':'modifica')+'</button>'+
+      '</div>';
+    if(isEditing){
+      body += (
+        '<div class="jg-form">'+
+          '<label>Nome del posto</label><input type="text" data-rf="titolo" value="'+escapeHtml(r.titolo||"")+'">'+
+          '<div class="jg-form-row">'+
+            '<div><label>Giorno</label><input type="text" data-rf="giorno" value="'+escapeHtml(r.giorno||"")+'" placeholder="15/09"></div>'+
+            '<div><label>Zona</label><input type="text" data-rf="zona" value="'+escapeHtml(r.zona||"")+'" placeholder="Kyoto – Gion"></div>'+
+          '</div>'+
+          '<label>Hype (fiamme 🔥)</label><input type="text" data-rf="hype" value="'+escapeHtml(r.hype||"")+'" placeholder="🔥🔥🔥">'+
+          '<label>Perché è social</label><input type="text" data-rf="perche" value="'+escapeHtml(r.perche||"")+'">'+
+          '<div class="jg-form-row">'+
+            '<div><label>Orario</label><input type="text" data-rf="orario" value="'+escapeHtml(r.orario||"")+'"></div>'+
+            '<div><label>Prenotazione</label><input type="text" data-rf="prenotNote" value="'+escapeHtml(r.prenotNote||"")+'" placeholder="Consigliata / non necessaria"></div>'+
+          '</div>'+
+          '<label>Nota sull\'itinerario (opzionale)</label><input type="text" data-rf="noteItin" value="'+escapeHtml(r.noteItin||"")+'">'+
+          '<label>Sito (il nome diventa un link)</label><input type="text" data-rf="sito" value="'+escapeHtml(r.sito||"")+'" placeholder="https://…">'+
+          '<label>Link prenotazione (opzionale)</label><input type="text" data-rf="linkPrenot" value="'+escapeHtml(r.linkPrenot||"")+'" placeholder="https://…">'+
+          '<label>Link mappa (opzionale)</label><input type="text" data-rf="maps" value="'+escapeHtml(r.maps||"")+'" placeholder="https://…">'+
+          '<div class="jg-form-actions">'+
+            '<button class="jg-btn jg-btn-primary" data-rsave="'+r.id+'">Salva</button>'+
+            '<button class="jg-btn" data-rcancel="'+r.id+'">Annulla</button>'+
+            '<button class="jg-btn-danger" data-rdelete="'+r.id+'">Elimina</button>'+
+          '</div>'+
+        '</div>'
+      );
+    }
+    return '<div class="jg-item" data-recoitem="'+r.id+'">'+body+'</div>';
+  }
+
   function renderLodgingList(){
     if(!state.lodging.length) return '<p class="jg-info-empty">Nessun alloggio inserito ancora.</p>';
     return '<div class="jg-rail">'+state.lodging.map(renderLodgingItem).join('')+'</div>';
@@ -1090,6 +1229,10 @@
         collapsible('alloggi', '🏨', 'Alloggi del viaggio',
           renderLodgingList()+
           '<button class="jg-add" id="jg-lodging-add" style="margin-top:8px;">+ aggiungi alloggio</button>'
+        )+
+        collapsible('consigli', '🔥', 'Consigli',
+          renderRecoList()+
+          '<button class="jg-add" id="jg-reco-add" style="margin-top:8px;">+ aggiungi consiglio</button>'
         )+
         collapsible('frasi', '💬', 'Frasi utili',
           USEFUL_INFO.phraseGroups.map(function(g, gi){
@@ -1436,6 +1579,68 @@
       });
     });
 
+    // --- consigli ---
+    var recoAdd = document.getElementById('jg-reco-add');
+    if(recoAdd) recoAdd.addEventListener('click', async function(){
+      var newReco = {id:uid(), giorno:"", zona:"", titolo:"Nuovo consiglio", hype:"🔥", perche:"", orario:"", prenotNecessaria:false, prenotNote:"", sito:"", linkPrenot:"", maps:"", noteItin:""};
+      state.recommendations.push(newReco);
+      markRecoDirty(newReco.id);
+      editingNow = {reco:newReco.id};
+      render();
+      await saveData();
+      var el2 = a.querySelector('[data-recoitem="'+newReco.id+'"] input[data-rf=titolo]');
+      if(el2){ el2.focus(); el2.select(); }
+    });
+    a.querySelectorAll('[data-redit]').forEach(function(el){
+      el.addEventListener('click', function(){
+        var id = el.getAttribute('data-redit');
+        editingNow = (editingNow && editingNow.reco===id) ? null : {reco:id};
+        render();
+      });
+    });
+    a.querySelectorAll('[data-rcancel]').forEach(function(el){
+      el.addEventListener('click', function(){ editingNow = null; render(); });
+    });
+    a.querySelectorAll('[data-rsave]').forEach(function(el){
+      el.addEventListener('click', async function(){
+        var id = el.getAttribute('data-rsave');
+        var r = findReco(id);
+        if(!r) return;
+        var form = el.closest('.jg-form');
+        var titolo = form.querySelector('[data-rf=titolo]').value.trim();
+        if(!titolo){ showToast("Serve almeno un nome"); return; }
+        r.item.titolo = titolo;
+        r.item.giorno = form.querySelector('[data-rf=giorno]').value.trim();
+        r.item.zona = form.querySelector('[data-rf=zona]').value.trim();
+        r.item.hype = form.querySelector('[data-rf=hype]').value.trim();
+        r.item.perche = form.querySelector('[data-rf=perche]').value.trim();
+        r.item.orario = form.querySelector('[data-rf=orario]').value.trim();
+        r.item.prenotNote = form.querySelector('[data-rf=prenotNote]').value.trim();
+        r.item.noteItin = form.querySelector('[data-rf=noteItin]').value.trim();
+        r.item.sito = form.querySelector('[data-rf=sito]').value.trim();
+        r.item.linkPrenot = form.querySelector('[data-rf=linkPrenot]').value.trim();
+        r.item.maps = form.querySelector('[data-rf=maps]').value.trim();
+        markRecoDirty(id);
+        editingNow = null;
+        render();
+        await saveData();
+        showToast("Salvato");
+      });
+    });
+    a.querySelectorAll('[data-rdelete]').forEach(function(el){
+      el.addEventListener('click', async function(){
+        var id = el.getAttribute('data-rdelete');
+        var r = findReco(id);
+        if(!r) return;
+        state.recommendations.splice(r.idx,1);
+        markRecoDeleted(id);
+        editingNow = null;
+        render();
+        await saveData();
+        showToast("Consiglio eliminato");
+      });
+    });
+
     // --- convertitore valuta ---
     var convEur = document.getElementById('jg-conv-eur');
     var convJpy = document.getElementById('jg-conv-jpy');
@@ -1525,6 +1730,25 @@
     await saveData();
   }
 
+  var RECO_SEED_KEY = STORAGE_KEY + "_recoseeded";
+  function recoAlreadySeeded(){
+    try{ return window.localStorage.getItem(RECO_SEED_KEY) === '1'; }catch(e){ return false; }
+  }
+  function markRecoSeeded(){
+    try{ window.localStorage.setItem(RECO_SEED_KEY, '1'); }catch(e){}
+  }
+  async function maybeSeedReco(){
+    if(recoAlreadySeeded()) return;
+    markRecoSeeded();
+    if(state.recommendations && state.recommendations.length > 0) return;
+    var seed = defaultRecommendations();
+    if(!seed.length) return;
+    state.recommendations = seed;
+    seed.forEach(function(r){ markRecoDirty(r.id); });
+    render();
+    await saveData();
+  }
+
   // Aggiunge il sito web ai consigli sul cibo già esistenti (creati prima
   // che questo campo esistesse), abbinando per nome. Non tocca nessun altro
   // campo e non ricrea/duplica nulla.
@@ -1560,6 +1784,7 @@
     state.apiUsage.outputTokens += pendingUsageDelta.outputTokens;
     await maybeSeedFood();
     await maybeSeedLodging();
+    await maybeSeedReco();
     await maybeBackfillFoodWebsites();
     if(STORAGE_MODE === 'cloud' || STORAGE_MODE === 'remote'){
       pollTimer = setInterval(function(){ loadData(true); }, 7000);
@@ -1610,7 +1835,7 @@
       btn.textContent = "Creo...";
       btn.disabled = true;
       try{
-        var seed = {days:defaultDays(), food:defaultFood(), lodging:defaultLodging()};
+        var seed = {days:defaultDays(), food:defaultFood(), lodging:defaultLodging(), recommendations:defaultRecommendations()};
         var newId = await remoteCreate(seed, ACTIVE_MASTER_KEY);
         ACTIVE_BLOB_ID = newId;
         STORAGE_MODE = 'remote';

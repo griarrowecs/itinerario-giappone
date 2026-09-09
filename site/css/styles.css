@@ -300,3 +300,11 @@
   .jg-info-collapsible.open .jg-info-collapse-head .jg-chev{transform:rotate(90deg);}
   .jg-info-collapse-body{display:none;padding:0 13px 13px;}
   .jg-info-collapsible.open .jg-info-collapse-body{display:block;}
+
+  .jg-newsticker{background:#B0392C;overflow:hidden;padding:7px 0;}
+  .jg-newsticker-track{white-space:nowrap;width:max-content;animation:jgticker 32s linear infinite;}
+  .jg-newsticker-track span{display:inline-block;color:#FFFFFF;font-weight:700;font-size:12px;letter-spacing:0.2px;padding-right:40px;}
+  @keyframes jgticker{ from{transform:translateX(0);} to{transform:translateX(-50%);} }
+  @media (prefers-reduced-motion: reduce){
+    .jg-newsticker-track{animation:none;overflow-x:auto;}
+  }
