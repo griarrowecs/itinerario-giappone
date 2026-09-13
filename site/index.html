@@ -48,5 +48,15 @@
 <script src="js/config.js"></script>
 <script src="js/data.js"></script>
 <script src="js/app.js"></script>
+<script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', function(){
+      navigator.serviceWorker.register('sw.js').catch(function(){
+        // se la registrazione fallisce (browser non supportato, ecc.) l'app
+        // continua a funzionare normalmente, solo senza la copia offline.
+      });
+    });
+  }
+</script>
 </body>
 </html>

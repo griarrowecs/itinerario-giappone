@@ -3,7 +3,7 @@
 // Il risultato viene tenuto in cache dal browser per qualche ora (vedi
 // app.js), così questa funzione non viene chiamata ad ogni apertura.
 
-var NHK_FEED_URL = "https://www3.nhk.or.jp/nhkworld/data/en/news/backstory/rss.xml";
+var NHK_FEED_URL = "https://www3.nhk.or.jp/rss/news/cat0.xml";
 
 exports.handler = async function (event) {
   if (event.httpMethod === "OPTIONS") {
@@ -27,7 +27,7 @@ exports.handler = async function (event) {
     }
 
     var prompt =
-      "Traduci questi titoli di notizie NHK World (Giappone) in italiano. " +
+      "Traduci questi titoli di notizie NHK (cronaca e attualità dal Giappone, testo originale in giapponese) in italiano. " +
       "Rispondi SOLO con un array JSON di stringhe, nello stesso ordine, senza altro testo, senza markdown, senza backtick. " +
       "Traduzione naturale e breve, non letterale parola per parola.\n\n" +
       JSON.stringify(titles);

@@ -109,7 +109,7 @@
   // Cache di alcune ore: non si richiama la funzione (che consuma credito
   // API) ad ogni apertura dell'app, solo quando la cache è scaduta.
   var NEWS_KEY = STORAGE_KEY + "_news";
-  var NEWS_CACHE_HOURS = 5;
+  var NEWS_CACHE_HOURS = 3;
   var newsHeadlines = [];
   var newsLoadTriggered = false;
   function loadNewsFromCache(){
@@ -125,13 +125,23 @@
   function saveNewsToCache(headlines){
     try{ window.localStorage.setItem(NEWS_KEY, JSON.stringify({headlines:headlines, ts:Date.now()})); }catch(e){}
   }
+  function fetchNewsOnce(){
+    return fetch('/.netlify/functions/news').then(function(r){ return r.ok ? r.json() : null; });
+  }
   function loadNews(){
     if(newsLoadTriggered) return;
     newsLoadTriggered = true;
     var cached = loadNewsFromCache();
     if(cached && cached.length){ newsHeadlines = cached; render(); return; }
-    fetch('/.netlify/functions/news')
-      .then(function(r){ return r.ok ? r.json() : null; })
+    fetchNewsOnce()
+      .then(function(data){
+        if(data && Array.isArray(data.headlines) && data.headlines.length) return data;
+        // primo tentativo senza risultato utile: un secondo tentativo dopo
+        // una breve pausa, prima di rinunciare (i due passaggi verso NHK e
+        // verso Claude, uno dopo l'altro, a volte superano il tempo limite
+        // della prima chiamata).
+        return new Promise(function(resolve){ setTimeout(resolve, 1500); }).then(fetchNewsOnce);
+      })
       .then(function(data){
         if(data && Array.isArray(data.headlines) && data.headlines.length){
           newsHeadlines = data.headlines;
@@ -139,7 +149,7 @@
           render();
         }
       })
-      .catch(function(){}); // in caso di errore, la striscia semplicemente non appare
+      .catch(function(){}); // se anche il ritentativo fallisce, la striscia semplicemente non appare
   }
   function renderNewsTicker(){
     if(!newsHeadlines.length) return '';
